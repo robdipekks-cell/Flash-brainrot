@@ -1,0 +1,375 @@
+-- // Fluent UI Library
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
+local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
+
+-- // Services
+local Players           = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService        = game:GetService("RunService")
+local Workspace         = game:GetService("Workspace")
+
+local lp        = Players.LocalPlayer
+local dashEvent = ReplicatedStorage:WaitForChild("DashEvent")
+
+-- ════════════════════════════════════════════
+-- //  Speed Wall Thresholds (based on Stamina)
+-- ════════════════════════════════════════════
+-- Ordered lowest → highest so we can find current wall and step up to the next
+local speedWallThresholds = {
+    { min = 0,               wall = "SpeedWall_1"  },
+    { min = 1000,            wall = "SpeedWall_2"  },
+    { min = 15000,           wall = "SpeedWall_3"  },
+    { min = 225000,          wall = "SpeedWall_4"  },
+    { min = 3375000,         wall = "SpeedWall_5"  },
+    { min = 50000000,        wall = "SpeedWall_6"  },
+    { min = 750000000,       wall = "SpeedWall_7"  },
+    { min = 11250000000,     wall = "SpeedWall_8"  },
+    { min = 168750000000,    wall = "SpeedWall_9"  },
+    { min = 2500000000000,   wall = "SpeedWall_10" },
+    { min = 37500000000000,  wall = "SpeedWall_11" },
+    { min = 562500000000000, wall = "SpeedWall_12" },
+}
+
+local function getBestSpeedWall()
+    local stamina = lp:GetAttribute("Stamina") or 0
+    local currentIndex = 1
+    for i, entry in ipairs(speedWallThresholds) do
+        if stamina >= entry.min then
+            currentIndex = i
+        end
+    end
+    -- Push to the next wall up; stay at 12 if already maxed
+    local nextIndex = math.min(currentIndex + 1, #speedWallThresholds)
+    return speedWallThresholds[nextIndex].wall
+end
+
+-- ════════════════════════════════════════════
+-- //  Teleport
+-- ════════════════════════════════════════════
+local function teleportToBestWall()
+    local character = lp.Character or lp.CharacterAdded:Wait()
+    local root      = character:WaitForChild("HumanoidRootPart")
+    local humanoid  = character:WaitForChild("Humanoid")
+    local wallName  = getBestSpeedWall()
+
+    local speedWalls = Workspace:FindFirstChild("Gameplay")
+        and Workspace.Gameplay:FindFirstChild("SpeedWalls")
+    local wall = speedWalls and speedWalls:FindFirstChild(wallName)
+
+    if not wall then
+        warn("[Teleport] Wall not found:", wallName)
+        return
+    end
+
+    print("[Teleport] -> " .. wallName)
+
+    local prevWalk = humanoid.WalkSpeed
+    local prevJump = humanoid.JumpPower
+    humanoid.WalkSpeed = 0
+    humanoid.JumpPower = 0
+
+    local target = CFrame.new(wall.Position + Vector3.new(0, 5, 0))
+
+    for _ = 1, 10 do
+        root.CFrame                  = target
+        root.AssemblyLinearVelocity  = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+        RunService.Heartbeat:Wait()
+    end
+
+    humanoid.WalkSpeed = prevWalk
+    humanoid.JumpPower = prevJump
+end
+
+-- ════════════════════════════════════════════
+-- //  State
+-- ════════════════════════════════════════════
+local autoFarmEnabled    = false
+local autoBuyEnabled     = false
+local autoRebirthEnabled = false
+local autoSpinEnabled    = false
+local autoCollectEnabled = false
+local autoUpgradeEnabled = false
+local selectedRarities   = { "Rare" }
+
+-- ════════════════════════════════════════════
+-- //  Helper: find the base owned by LocalPlayer
+-- ════════════════════════════════════════════
+local function getPlayerBase()
+    local plots = Workspace:FindFirstChild("Plots")
+    if not plots then return nil end
+    for i = 1, 5 do
+        local base = plots:FindFirstChild("Base" .. i)
+        if base then
+            local owner = base:GetAttribute("Owner")
+            if owner == lp.UserId then
+                return base
+            end
+        end
+    end
+    return nil
+end
+
+-- ════════════════════════════════════════════
+-- //  Helper: teleport root to a part (10 frames)
+-- ════════════════════════════════════════════
+local function teleportToPart(part)
+    local character = lp.Character or lp.CharacterAdded:Wait()
+    local root      = character:WaitForChild("HumanoidRootPart")
+    local target    = CFrame.new(part.Position + Vector3.new(0, 3, 0))
+    for _ = 1, 10 do
+        root.CFrame                  = target
+        root.AssemblyLinearVelocity  = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+        RunService.Heartbeat:Wait()
+    end
+end
+
+-- ════════════════════════════════════════════
+-- //  Auto Farm Loop
+-- ════════════════════════════════════════════
+task.spawn(function()
+    while true do
+        if autoFarmEnabled then
+            -- 1. Dash
+            dashEvent:FireServer("StartCharge")
+            dashEvent:FireServer(514953441917896)
+
+            -- 2. Teleport to best SpeedWall
+            teleportToBestWall()
+
+            -- 3. Clear dash
+            dashEvent:FireServer("ClearDash")
+
+
+        end
+        task.wait(0)
+    end
+end)
+
+-- ════════════════════════════════════════════
+-- //  Auto Buy Loop
+-- ════════════════════════════════════════════
+task.spawn(function()
+    while true do
+        if autoBuyEnabled and #selectedRarities > 0 then
+            for _, rarity in ipairs(selectedRarities) do
+                ReplicatedStorage
+                    :WaitForChild("Events")
+                    :WaitForChild("SendTreadmillEvent")
+                    :InvokeServer("Buy", rarity)
+                task.wait(0.1)
+            end
+        end
+        task.wait(0.5)
+    end
+end)
+
+-- ════════════════════════════════════════════
+-- //  Auto Rebirth Loop
+-- ════════════════════════════════════════════
+task.spawn(function()
+    while true do
+        if autoRebirthEnabled then
+            ReplicatedStorage
+                :WaitForChild("RemoteGUI")
+                :WaitForChild("URebirth")
+                :FireServer()
+        end
+        task.wait(1)
+    end
+end)
+
+-- ════════════════════════════════════════════
+-- //  Auto Spin Loop
+-- ════════════════════════════════════════════
+task.spawn(function()
+    while true do
+        if autoSpinEnabled then
+            ReplicatedStorage
+                :WaitForChild("Functions")
+                :WaitForChild("RequestSpinFunc")
+                :InvokeServer()
+        end
+        task.wait(0.5)
+    end
+end)
+
+-- ════════════════════════════════════════════
+-- //  Auto Collect Loop
+-- ════════════════════════════════════════════
+task.spawn(function()
+    while true do
+        if autoCollectEnabled then
+            local base = getPlayerBase()
+            if base then
+                local modelStands = base:FindFirstChild("ModelStands")
+                if modelStands then
+                    for i = 1, 30 do
+                        if not autoCollectEnabled then break end
+                        local stand = modelStands:FindFirstChild("ModelStand" .. i)
+                        local hitbox = stand
+                            and stand:FindFirstChild("StandClaim")
+                            and stand.StandClaim:FindFirstChild("StandClaimHitbox")
+                        if hitbox then
+                            teleportToPart(hitbox)
+                            task.wait(0.1)
+                        end
+                    end
+                end
+            end
+        end
+        task.wait(0.5)
+    end
+end)
+
+-- ════════════════════════════════════════════
+-- //  Auto Upgrade Loop
+-- ════════════════════════════════════════════
+task.spawn(function()
+    while true do
+        if autoUpgradeEnabled then
+            local base = getPlayerBase()
+            if base then
+                local modelStands = base:FindFirstChild("ModelStands")
+                if modelStands then
+                    for i = 1, 30 do
+                        if not autoUpgradeEnabled then break end
+                        local stand = modelStands:FindFirstChild("ModelStand" .. i)
+                        if stand then
+                            ReplicatedStorage
+                                :WaitForChild("Remotes")
+                                :WaitForChild("UpgradeBrainrotRemote")
+                                :FireServer(base, stand)
+                            task.wait(0.1)
+                        end
+                    end
+                end
+            end
+        end
+        task.wait(0.5)
+    end
+end)
+
+
+local Window = Fluent:CreateWindow({
+    Title       = "Be Flash For Brainrot",
+    SubTitle    = "By Oorbits",
+    TabWidth    = 160,
+    Size        = UDim2.fromOffset(580, 460),
+    Acrylic     = true,
+    Theme       = "Dark",
+    MinimizeKey = Enum.KeyCode.LeftControl
+})
+
+local Tabs = {
+    Main    = Window:AddTab({ Title = "Main",         Icon = "package"          }),
+    Buy     = Window:AddTab({ Title = "Buy",          Icon = "shopping-cart" }),
+    Rebirth = Window:AddTab({ Title = "Auto Rebirth", Icon = "refresh-cw"   }),
+    Spin    = Window:AddTab({ Title = "Spin",         Icon = "rotate-cw"    }),
+}
+
+-- ════════════════════════════════════════════
+-- //  MAIN TAB
+-- ════════════════════════════════════════════
+Tabs.Main:AddToggle("AutoFarm", {
+    Title       = "Auto Farm",
+    Description = "Auto farms smart.",
+    Default     = false,
+    Callback    = function(v) autoFarmEnabled = v end,
+})
+
+Tabs.Main:AddToggle("AutoCollect", {
+    Title       = "Auto Collect All",
+    Description = "collect all brainrot.",
+    Default     = false,
+    Callback    = function(v) autoCollectEnabled = v end,
+})
+
+Tabs.Main:AddToggle("AutoUpgrade", {
+    Title       = "Auto Upgrade All",
+    Description = "Upgrade all brainrot.",
+    Default     = false,
+    Callback    = function(v) autoUpgradeEnabled = v end,
+})
+
+-- ════════════════════════════════════════════
+-- //  BUY TAB
+-- ════════════════════════════════════════════
+local rarityOptions = {
+    "Uncommon","Rare","Epic","Legendary",
+    "Mythic","Secret","Cosmic","Celestial",
+    "Divine","Godly","Admin","Infinity"
+}
+
+Tabs.Buy:AddToggle("AutoBuy", {
+    Title       = "Auto Buy",
+    Description = "buy treadmills.",
+    Default     = false,
+    Callback    = function(v) autoBuyEnabled = v end,
+})
+
+Tabs.Buy:AddDropdown("RaritySelect", {
+    Title       = "Select Rarities",
+    Description = "Pick which rarities to purchase.",
+    Values      = rarityOptions,
+    Multi       = true,
+    Default     = { "Rare" },
+    Callback    = function(value)
+        selectedRarities = {}
+        for rarity, selected in pairs(value) do
+            if selected then
+                table.insert(selectedRarities, rarity)
+            end
+        end
+    end,
+})
+
+-- ════════════════════════════════════════════
+-- //  REBIRTH TAB
+-- ════════════════════════════════════════════
+Tabs.Rebirth:AddToggle("AutoRebirth", {
+    Title       = "Auto Rebirth",
+    Description = "Auto Rebirth.",
+    Default     = false,
+    Callback    = function(v) autoRebirthEnabled = v end,
+})
+
+-- ════════════════════════════════════════════
+-- //  SPIN TAB
+-- ════════════════════════════════════════════
+Tabs.Spin:AddToggle("AutoSpin", {
+    Title       = "Auto Spin",
+    Description = "Continuously Spin.",
+    Default     = false,
+    Callback    = function(v) autoSpinEnabled = v end,
+})
+
+-- ════════════════════════════════════════════
+-- //  Done
+-- ════════════════════════════════════════════
+local SettingsTab = Window:AddTab({ Title = "Settings", Icon = "settings" })
+
+SaveManager:SetLibrary(Fluent)
+InterfaceManager:SetLibrary(Fluent)
+
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({})
+
+InterfaceManager:SetFolder("OorbitsHub")
+SaveManager:SetFolder("OorbitsHub/BeAStreamer")
+
+-- FIXED: Changed 'Tabs.Settings' to 'SettingsTab' to match your variable
+InterfaceManager:BuildInterfaceSection(SettingsTab)
+SaveManager:BuildConfigSection(SettingsTab)
+
+Window:SelectTab(1)
+
+Fluent:Notify({
+    Title = "Fluent",
+    Content = "The script has been loaded.",
+    Duration = 5
+})
+
+SaveManager:LoadAutoloadConfig()
