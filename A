@@ -15,7 +15,6 @@ local dashEvent = ReplicatedStorage:WaitForChild("DashEvent")
 -- ════════════════════════════════════════════
 -- //  Speed Wall Thresholds (based on Stamina)
 -- ════════════════════════════════════════════
--- Ordered lowest → highest so we can find current wall and step up to the next
 local speedWallThresholds = {
     { min = 0,               wall = "SpeedWall_1"  },
     { min = 1000,            wall = "SpeedWall_2"  },
@@ -39,7 +38,6 @@ local function getBestSpeedWall()
             currentIndex = i
         end
     end
-    -- Push to the next wall up; stay at 12 if already maxed
     local nextIndex = math.min(currentIndex + 1, #speedWallThresholds)
     return speedWallThresholds[nextIndex].wall
 end
@@ -85,13 +83,14 @@ end
 -- ════════════════════════════════════════════
 -- //  State
 -- ════════════════════════════════════════════
-local autoFarmEnabled    = false
-local autoBuyEnabled     = false
-local autoRebirthEnabled = false
-local autoSpinEnabled    = false
-local autoCollectEnabled = false
-local autoUpgradeEnabled = false
-local selectedRarities   = { "Rare" }
+local autoFarmEnabled      = false
+local autoBuyEnabled       = false
+local autoRebirthEnabled   = false
+local autoSpinEnabled      = false
+local autoCollectEnabled   = false
+local autoUpgradeEnabled   = false
+local autoTreadmillEnabled = false
+local selectedRarities     = { "Rare" }
 
 -- ════════════════════════════════════════════
 -- //  Helper: find the base owned by LocalPlayer
@@ -132,17 +131,10 @@ end
 task.spawn(function()
     while true do
         if autoFarmEnabled then
-            -- 1. Dash
             dashEvent:FireServer("StartCharge")
             dashEvent:FireServer(514953441917896)
-
-            -- 2. Teleport to best SpeedWall
             teleportToBestWall()
-
-            -- 3. Clear dash
             dashEvent:FireServer("ClearDash")
-
-
         end
         task.wait(10)
     end
@@ -252,7 +244,37 @@ task.spawn(function()
     end
 end)
 
+-- ════════════════════════════════════════════
+-- //  Auto Treadmill (2x) Loop
+-- ════════════════════════════════════════════
+task.spawn(function()
+    local TrainTreadmillEvent = ReplicatedStorage
+        :WaitForChild("Events")
+        :WaitForChild("TrainTreadmillEvent")
 
+    while true do
+        if autoTreadmillEnabled then
+            -- Auto-equip Treadmill from Backpack if not already held
+            local character = lp.Character
+            local humanoid  = character and character:FindFirstChild("Humanoid")
+            local tool      = lp.Backpack:FindFirstChild("Treadmill")
+                           or (character and character:FindFirstChild("Treadmill"))
+
+            if humanoid and tool and tool.Parent ~= character then
+                humanoid:EquipTool(tool)
+                task.wait(0.05)
+            end
+
+            -- Fire as fast as possible
+            TrainTreadmillEvent:FireServer(true)
+        end
+        task.wait(0.05)
+    end
+end)
+
+-- ════════════════════════════════════════════
+-- //  Window
+-- ════════════════════════════════════════════
 local Window = Fluent:CreateWindow({
     Title       = "Be Flash For Brainrot",
     SubTitle    = "By Oorbits",
@@ -264,10 +286,10 @@ local Window = Fluent:CreateWindow({
 })
 
 local Tabs = {
-    Main    = Window:AddTab({ Title = "Main",         Icon = "package"          }),
+    Main    = Window:AddTab({ Title = "Main",         Icon = "package"       }),
     Buy     = Window:AddTab({ Title = "Buy",          Icon = "shopping-cart" }),
-    Rebirth = Window:AddTab({ Title = "Auto Rebirth", Icon = "refresh-cw"   }),
-    Spin    = Window:AddTab({ Title = "Spin",         Icon = "rotate-cw"    }),
+    Rebirth = Window:AddTab({ Title = "Auto Rebirth", Icon = "refresh-cw"    }),
+    Spin    = Window:AddTab({ Title = "Spin",         Icon = "rotate-cw"     }),
 }
 
 -- ════════════════════════════════════════════
@@ -282,7 +304,7 @@ Tabs.Main:AddToggle("AutoFarm", {
 
 Tabs.Main:AddToggle("AutoCollect", {
     Title       = "Auto Collect All",
-    Description = "collect all brainrot.",
+    Description = "Collect all brainrot.",
     Default     = false,
     Callback    = function(v) autoCollectEnabled = v end,
 })
@@ -292,6 +314,13 @@ Tabs.Main:AddToggle("AutoUpgrade", {
     Description = "Upgrade all brainrot.",
     Default     = false,
     Callback    = function(v) autoUpgradeEnabled = v end,
+})
+
+Tabs.Main:AddToggle("AutoTreadmill", {
+    Title       = "Auto Treadmill (2x)",
+    Description = "Equips Treadmill and fires TrainTreadmillEvent rapidly.",
+    Default     = false,
+    Callback    = function(v) autoTreadmillEnabled = v end,
 })
 
 -- ════════════════════════════════════════════
@@ -305,7 +334,7 @@ local rarityOptions = {
 
 Tabs.Buy:AddToggle("AutoBuy", {
     Title       = "Auto Buy",
-    Description = "buy treadmills.",
+    Description = "Buy treadmills.",
     Default     = false,
     Callback    = function(v) autoBuyEnabled = v end,
 })
@@ -347,7 +376,7 @@ Tabs.Spin:AddToggle("AutoSpin", {
 })
 
 -- ════════════════════════════════════════════
--- //  Done
+-- //  Settings
 -- ════════════════════════════════════════════
 local SettingsTab = Window:AddTab({ Title = "Settings", Icon = "settings" })
 
@@ -360,15 +389,14 @@ SaveManager:SetIgnoreIndexes({})
 InterfaceManager:SetFolder("OorbitsHub")
 SaveManager:SetFolder("OorbitsHub/BeAStreamer")
 
--- FIXED: Changed 'Tabs.Settings' to 'SettingsTab' to match your variable
 InterfaceManager:BuildInterfaceSection(SettingsTab)
 SaveManager:BuildConfigSection(SettingsTab)
 
 Window:SelectTab(1)
 
 Fluent:Notify({
-    Title = "Fluent",
-    Content = "The script has been loaded.",
+    Title    = "Fluent",
+    Content  = "The script has been loaded.",
     Duration = 5
 })
 
