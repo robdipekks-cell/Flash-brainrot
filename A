@@ -144,7 +144,7 @@ task.spawn(function()
 
 
         end
-        task.wait(0)
+        task.wait(10)
     end
 end)
 
