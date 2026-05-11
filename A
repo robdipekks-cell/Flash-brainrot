@@ -38,8 +38,12 @@ local function getBestSpeedWall()
             currentIndex = i
         end
     end
-    local nextIndex = math.min(currentIndex + 1, #speedWallThresholds)
-    return speedWallThresholds[nextIndex].wall
+    -- If stamina already qualifies for Wall 12, lock to it
+    if currentIndex >= 12 then
+        return speedWallThresholds[12].wall
+    end
+    -- Otherwise push to the next wall up
+    return speedWallThresholds[currentIndex + 1].wall
 end
 
 -- ════════════════════════════════════════════
@@ -89,8 +93,9 @@ local autoRebirthEnabled   = false
 local autoSpinEnabled      = false
 local autoCollectEnabled   = false
 local autoUpgradeEnabled   = false
-local autoTreadmillEnabled = false
-local selectedRarities     = { "Rare" }
+local autoTreadmillEnabled  = false
+local autoGotoWall12Enabled = false
+local selectedRarities      = { "Rare" }
 
 -- ════════════════════════════════════════════
 -- //  Helper: find the base owned by LocalPlayer
@@ -273,6 +278,54 @@ task.spawn(function()
 end)
 
 -- ════════════════════════════════════════════
+-- //  Auto Goto Wall 12 Loop
+-- ════════════════════════════════════════════
+task.spawn(function()
+    local WALL12_MIN = speedWallThresholds[12].min  -- 562,500,000,000,000
+
+    local speedWalls = Workspace:FindFirstChild("Gameplay")
+        and Workspace.Gameplay:FindFirstChild("SpeedWalls")
+
+    while true do
+        if autoGotoWall12Enabled then
+            local stamina = lp:GetAttribute("Stamina") or 0
+            if stamina >= WALL12_MIN then
+                -- Re-fetch in case Workspace loaded after script start
+                if not speedWalls then
+                    speedWalls = Workspace:FindFirstChild("Gameplay")
+                        and Workspace.Gameplay:FindFirstChild("SpeedWalls")
+                end
+                local wall12 = speedWalls and speedWalls:FindFirstChild("SpeedWall_12")
+                if wall12 then
+                    local character = lp.Character or lp.CharacterAdded:Wait()
+                    local root      = character:WaitForChild("HumanoidRootPart")
+                    local humanoid  = character:WaitForChild("Humanoid")
+
+                    local prevWalk = humanoid.WalkSpeed
+                    local prevJump = humanoid.JumpPower
+                    humanoid.WalkSpeed = 0
+                    humanoid.JumpPower = 0
+
+                    local target = CFrame.new(wall12.Position + Vector3.new(0, 5, 0))
+                    for _ = 1, 10 do
+                        root.CFrame                  = target
+                        root.AssemblyLinearVelocity  = Vector3.zero
+                        root.AssemblyAngularVelocity = Vector3.zero
+                        RunService.Heartbeat:Wait()
+                    end
+
+                    humanoid.WalkSpeed = prevWalk
+                    humanoid.JumpPower = prevJump
+
+                    print("[Wall 12] Stamina qualified — teleported to SpeedWall_12")
+                end
+            end
+        end
+        task.wait(1)
+    end
+end)
+
+-- ════════════════════════════════════════════
 -- //  Window
 -- ════════════════════════════════════════════
 local Window = Fluent:CreateWindow({
@@ -318,9 +371,16 @@ Tabs.Main:AddToggle("AutoUpgrade", {
 
 Tabs.Main:AddToggle("AutoTreadmill", {
     Title       = "Auto Treadmill (2x)",
-    Description = "Equips Treadmill and fires TrainTreadmillEvent rapidly.",
+    Description = "Equips Treadmill and famrs2x.",
     Default     = false,
     Callback    = function(v) autoTreadmillEnabled = v end,
+})
+
+Tabs.Main:AddToggle("AutoGotoWall12", {
+    Title       = "Auto Goto Wall 12",
+    Description = "last wall.",
+    Default     = false,
+    Callback    = function(v) autoGotoWall12Enabled = v end,
 })
 
 -- ════════════════════════════════════════════
